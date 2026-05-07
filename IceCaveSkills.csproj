@@ -123,6 +123,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>

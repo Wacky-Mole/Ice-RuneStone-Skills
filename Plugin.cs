@@ -26,6 +26,8 @@ namespace IceCaveSkills
         private const string DiscoveryKeyPrefix = "IceCaveSkills_Mural_";
         private const string DiscoveryZdoKeyPrefix = "icecaveskills_mural_claimed_";
         internal const string ClaimMuralRpcName = "IceCaveSkills_ClaimMural";
+        private const string ResetDiscoveriesCommand = "irs_resetdiscoveries";
+        private const string DiscoveryResetVersionGlobalKeyPrefix = "icecaveskills_reset_version_";
         private const string RewardSfxPrefabName = "sfx_Potion_health_medium";
         private const float MaxSkillLevel = 100f;
         private static string ConfigFileName = ModGUID + ".cfg";
@@ -111,7 +113,10 @@ namespace IceCaveSkills
 
             Assembly assembly = Assembly.GetExecutingAssembly();
             _harmony.PatchAll(assembly);
+            RegisterConsoleCommand();
             SetupWatcher();
+
+          
         }
 
         private void OnDestroy()
@@ -144,7 +149,7 @@ namespace IceCaveSkills
                 PieceManagerModTemplateLogger.LogError("Please check your config entries for spelling and format!");
             }
         }
-
+       
 
         #region ConfigOptions
 
@@ -223,7 +228,7 @@ namespace IceCaveSkills
             {
                 return false;
             }
-
+         
             ZNetView? zNetView = GetDiscoveryZNetView(component);
             if (zNetView == null || !zNetView.IsValid())
             {
@@ -292,7 +297,8 @@ namespace IceCaveSkills
             }
 
             int discoveryZdoKey = GetDiscoveryZdoKey(discoveryKey);
-            if (discoveryZdo.GetBool(discoveryZdoKey))
+            long currentResetVersion = GetDiscoveryResetVersion();
+            if (discoveryZdo.GetLong(discoveryZdoKey, -1L) == currentResetVersion)
             {
                 ShowClaimedMessage(player);
                 return false;
@@ -318,7 +324,7 @@ namespace IceCaveSkills
                 return false;
             }
 
-            discoveryZdo.Set(discoveryZdoKey, value: true);
+            discoveryZdo.Set(discoveryZdoKey, currentResetVersion);
             ShowRewardMessage(player, rewardedSkill, newLevel - previousLevel, newLevel);
             PlayRewardEffect(player.transform.position);
             PieceManagerModTemplateLogger.LogInfo($"Awarded {rewardSource} reward {rewardedSkill} (+{newLevel - previousLevel:0.#}) for {discoveryKey}.");
@@ -620,6 +626,83 @@ namespace IceCaveSkills
         private static int GetDiscoveryZdoKey(string discoveryKey)
         {
             return (DiscoveryZdoKeyPrefix + discoveryKey).GetStableHashCode();
+        }
+
+        private static long GetDiscoveryResetVersion()
+        {
+            if (ZoneSystem.instance == null)
+            {
+                return 0L;
+            }
+
+            for (long version = 1L; version < 1024L; ++version)
+            {
+                if (!ZoneSystem.instance.GetGlobalKey(DiscoveryResetVersionGlobalKeyPrefix + version))
+                {
+                    return version - 1L;
+                }
+            }
+
+            return 1023L;
+        }
+
+        private static bool TryResetDiscoveries(out long newVersion)
+        {
+            newVersion = 0L;
+
+            if (!IsResetCommandAuthorized())
+            {
+                return false;
+            }
+
+            if (ZoneSystem.instance == null)
+            {
+                return false;
+            }
+
+            newVersion = GetDiscoveryResetVersion() + 1L;
+            ZoneSystem.instance.SetGlobalKey(DiscoveryResetVersionGlobalKeyPrefix + newVersion);
+            ResetHoveredMuralTracking();
+            PieceManagerModTemplateLogger.LogInfo($"Discovery reset command executed. New reset version: {newVersion}.");
+            return true;
+        }
+
+        private static bool IsResetCommandAuthorized()
+        {
+            return ConfigSync.IsAdmin;
+        }
+
+        private static void RegisterConsoleCommand()
+        {
+            new Terminal.ConsoleCommand(ResetDiscoveriesCommand,
+                "Reset all Ice&RuneStone Skills mural and runestone discoveries so they can be found again.",
+                args =>
+                {
+                    if (args == null)
+                    {
+                        return;
+                    }
+
+                    if (!IsResetCommandAuthorized())
+                    {
+                        args.Context?.AddString("You must be a server admin to reset discoveries.");
+                        return;
+                    }
+
+                    if (TryResetDiscoveries(out long newVersion))
+                    {
+                        args.Context?.AddString($"Ice&RuneStone Skills discoveries reset. New reset version: {newVersion}.");
+                        return;
+                    }
+
+                    args.Context?.AddString("Unable to reset discoveries right now.");
+                },
+                optionsFetcher: null,
+                isCheat: false,
+                isNetwork: false,
+                onlyServer: false,
+                isSecret: false,
+                allowInDevBuild: true);
         }
 
         private static void ShowRewardMessage(Player player, Skills.SkillType rewardedSkill, float grantedLevels, float newLevel)

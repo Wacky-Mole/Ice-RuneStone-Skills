@@ -50,6 +50,10 @@ The mod includes server-synced configuration locking through BepInEx/ServerSync.
 - `Enable Runestone Rewards`: enables or disables regular runestone rewards.
 - `Skill Reward Mode` under `3 - Runestone Rewards`: choose `Flat` or `PercentageOfMax` for regular runestones.
 - `Skill Reward Amount` under `3 - Runestone Rewards`: the reward value applied to regular runestones.
+## Admin Command
+
+- `irs_resetdiscoveries`: resets all mural and runestone discoveries so players can rediscover them again.
+- This command is restricted to server admins through ServerSync's admin handling.
 
 
 ### Mostly AI Generated
