@@ -18,11 +18,15 @@ namespace IceCaveSkills
     [BepInPlugin(ModGUID, ModName, ModVersion)]
     public class IceCaveSkillsPlugin : BaseUnityPlugin
     {
-        internal const string ModName = "IceCaveSkills";
+        internal const string ModName = "IceAndRuneStoneSkills";
+        internal const string DisplayName = "Ice&RuneStone Skills";
         internal const string ModVersion = "1.0.0";
         internal const string Author = "WackyMole";
         private const string ModGUID = Author + "." + ModName;
         private const string DiscoveryKeyPrefix = "IceCaveSkills_Mural_";
+        private const string DiscoveryZdoKeyPrefix = "icecaveskills_mural_claimed_";
+        internal const string ClaimMuralRpcName = "IceCaveSkills_ClaimMural";
+        private const string RewardSfxPrefabName = "sfx_Potion_health_medium";
         private const float MaxSkillLevel = 100f;
         private static string ConfigFileName = ModGUID + ".cfg";
         private static string ConfigFileFullPath = Paths.ConfigPath + Path.DirectorySeparatorChar + ConfigFileName;
@@ -44,6 +48,11 @@ namespace IceCaveSkills
             "mural", "vegvisir", "rune", "runestone", "cavepainting", "cave_painting"
         };
 
+        private static readonly string[] BossRuneStoneTerms =
+        {
+            "boss", "forsaken", "vegvisir"
+        };
+
         private static readonly Skills.SkillType[] RewardableSkillTypes =
             Enum.GetValues(typeof(Skills.SkillType))
                 .Cast<Skills.SkillType>()
@@ -51,10 +60,10 @@ namespace IceCaveSkills
                 .ToArray();
 
         public static readonly ManualLogSource PieceManagerModTemplateLogger =
-            BepInEx.Logging.Logger.CreateLogSource(ModName);
+            BepInEx.Logging.Logger.CreateLogSource(DisplayName);
 
         private static readonly ConfigSync ConfigSync = new(ModGUID)
-        { DisplayName = ModName, CurrentVersion = ModVersion, MinimumRequiredVersion = ModVersion };
+        { DisplayName = DisplayName, CurrentVersion = ModVersion, MinimumRequiredVersion = ModVersion };
 
         public enum Toggle
         {
@@ -68,6 +77,12 @@ namespace IceCaveSkills
             PercentageOfMax = 1
         }
 
+        private enum RewardSource
+        {
+            CavePainting,
+            Runestone
+        }
+
         public void Awake()
         {
             Localizer.Load();
@@ -79,11 +94,19 @@ namespace IceCaveSkills
 
             _enableCavePaintingRewards = config("2 - Rewards", "Enable Cave Painting Rewards", Toggle.On,
                 "If on, Frost Cave cave paintings can award skills.");
-            _rewardAmountMode = config("2 - Rewards", "Skill Reward Mode", RewardAmountMode.Flat,
-                "Choose whether the configured reward amount is granted as flat skill levels or as a percentage of the max skill level.");
-            _rewardAmount = config("2 - Rewards", "Skill Reward Amount", 10f,
+            _cavePaintingRewardAmountMode = config("2 - Cave Painting Rewards", "Skill Reward Mode", RewardAmountMode.Flat,
+                "Choose whether Frost Cave cave painting rewards are granted as flat skill levels or as a percentage of the max skill level.");
+            _cavePaintingRewardAmount = config("2 - Cave Painting Rewards", "Skill Reward Amount", 10f,
                 new ConfigDescription(
                     "Amount awarded by each Frost Cave cave painting. In PercentageOfMax mode, this is treated as a percent of the max skill level.",
+                    new AcceptableValueRange<float>(0f, MaxSkillLevel)));
+            _enableRunestoneRewards = config("3 - Runestone Rewards", "Enable Runestone Rewards", Toggle.On,
+                "If on, regular runestones can award skills. Boss runestones and Vegvisirs are excluded.");
+            _runestoneRewardAmountMode = config("3 - Runestone Rewards", "Skill Reward Mode", RewardAmountMode.Flat,
+                "Choose whether regular runestone rewards are granted as flat skill levels or as a percentage of the max skill level.");
+            _runestoneRewardAmount = config("3 - Runestone Rewards", "Skill Reward Amount", 3f,
+                new ConfigDescription(
+                    "Amount awarded by each eligible regular runestone. In PercentageOfMax mode, this is treated as a percent of the max skill level.",
                     new AcceptableValueRange<float>(0f, MaxSkillLevel)));
 
             Assembly assembly = Assembly.GetExecutingAssembly();
@@ -127,8 +150,11 @@ namespace IceCaveSkills
 
         private static ConfigEntry<Toggle> _serverConfigLocked = null!;
         private static ConfigEntry<Toggle> _enableCavePaintingRewards = null!;
-        private static ConfigEntry<RewardAmountMode> _rewardAmountMode = null!;
-        private static ConfigEntry<float> _rewardAmount = null!;
+        private static ConfigEntry<RewardAmountMode> _cavePaintingRewardAmountMode = null!;
+        private static ConfigEntry<float> _cavePaintingRewardAmount = null!;
+        private static ConfigEntry<Toggle> _enableRunestoneRewards = null!;
+        private static ConfigEntry<RewardAmountMode> _runestoneRewardAmountMode = null!;
+        private static ConfigEntry<float> _runestoneRewardAmount = null!;
 
         private ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description,
             bool synchronizedSetting = true)
@@ -198,22 +224,75 @@ namespace IceCaveSkills
                 return false;
             }
 
-            return TryDiscoverMural(component, player, discoveryKey);
+            ZNetView? zNetView = GetDiscoveryZNetView(component);
+            if (zNetView == null || !zNetView.IsValid())
+            {
+                return false;
+            }
+
+            MuralDiscoveryRpcProxy proxy = EnsureDiscoveryRpcProxy(zNetView);
+            return proxy.TryClaimMural(player.GetPlayerID(), discoveryKey);
         }
 
-        private static bool TryDiscoverMural(Component component, Player player, string discoveryKey)
+        internal static bool TryDiscoverRunestone(RuneStone runeStone, Humanoid character)
         {
-            if (_enableCavePaintingRewards.Value == Toggle.Off)
+            if (_enableRunestoneRewards.Value == Toggle.Off || runeStone == null || character is not Player player || !player.IsOwner())
             {
                 return false;
             }
 
-            if (ZoneSystem.instance == null)
+            if (!TryGetRegularRunestoneDetection(runeStone, out string discoveryKey))
             {
                 return false;
             }
 
-            if (ZoneSystem.instance.GetGlobalKey(discoveryKey))
+            ZNetView? zNetView = GetDiscoveryZNetView(runeStone);
+            if (zNetView == null || !zNetView.IsValid())
+            {
+                return false;
+            }
+
+            MuralDiscoveryRpcProxy proxy = EnsureDiscoveryRpcProxy(zNetView);
+            return proxy.TryClaimMural(player.GetPlayerID(), discoveryKey);
+        }
+
+        internal static bool TryProcessMuralClaim(ZNetView zNetView, long playerId, string discoveryKey)
+        {
+            Player? player = Player.GetPlayer(playerId);
+            if (player == null)
+            {
+                return false;
+            }
+
+            Component? component = GetMuralComponentFromRoot(zNetView.gameObject);
+            RewardSource rewardSource;
+            string resolvedDiscoveryKey;
+            if (component is RuneStone runeStone && TryGetRegularRunestoneDetection(runeStone, out resolvedDiscoveryKey))
+            {
+                rewardSource = RewardSource.Runestone;
+            }
+            else if (component != null && TryGetMuralDetection(component, out resolvedDiscoveryKey))
+            {
+                rewardSource = RewardSource.CavePainting;
+            }
+            else
+            {
+                return false;
+            }
+
+            if (!string.Equals(resolvedDiscoveryKey, discoveryKey, StringComparison.Ordinal))
+            {
+                discoveryKey = resolvedDiscoveryKey;
+            }
+
+            ZDO? discoveryZdo = zNetView.GetZDO();
+            if (discoveryZdo == null)
+            {
+                return false;
+            }
+
+            int discoveryZdoKey = GetDiscoveryZdoKey(discoveryKey);
+            if (discoveryZdo.GetBool(discoveryZdoKey))
             {
                 ShowClaimedMessage(player);
                 return false;
@@ -222,27 +301,56 @@ namespace IceCaveSkills
             Skills? skills = GetPlayerSkills(player);
             if (skills == null)
             {
-                PieceManagerModTemplateLogger.LogWarning("Failed to access player skills while processing a Frost Cave mural reward.");
+                PieceManagerModTemplateLogger.LogWarning($"Failed to access player skills while processing a {rewardSource} reward.");
                 return false;
             }
 
             Skills.SkillType[] availableSkills = RewardableSkillTypes.Where(skillType => Skills.IsSkillValid(skillType)).ToArray();
             if (availableSkills.Length == 0)
             {
-                PieceManagerModTemplateLogger.LogWarning("No valid skills were available for a Frost Cave mural reward.");
+                PieceManagerModTemplateLogger.LogWarning($"No valid skills were available for a {rewardSource} reward.");
                 return false;
             }
 
             Skills.SkillType rewardedSkill = availableSkills[UnityEngine.Random.Range(0, availableSkills.Length)];
-            if (!TryApplySkillReward(skills, rewardedSkill, out float previousLevel, out float newLevel))
+            if (!TryApplySkillReward(skills, rewardSource, rewardedSkill, out float previousLevel, out float newLevel))
             {
                 return false;
             }
 
-            ZoneSystem.instance.GlobalKeyAdd(discoveryKey, false);
+            discoveryZdo.Set(discoveryZdoKey, value: true);
             ShowRewardMessage(player, rewardedSkill, newLevel - previousLevel, newLevel);
-            PieceManagerModTemplateLogger.LogInfo($"Awarded Frost Cave mural reward {rewardedSkill} (+{newLevel - previousLevel:0.#}) for {discoveryKey}.");
+            PlayRewardEffect(player.transform.position);
+            PieceManagerModTemplateLogger.LogInfo($"Awarded {rewardSource} reward {rewardedSkill} (+{newLevel - previousLevel:0.#}) for {discoveryKey}.");
             return true;
+        }
+
+        internal static void EnsureDiscoveryRpcProxyIfEligible(ZNetView? zNetView)
+        {
+            if (zNetView == null || !zNetView.IsValid())
+            {
+                return;
+            }
+
+            Component? component = GetMuralComponentFromRoot(zNetView.gameObject);
+            if (component == null)
+            {
+                return;
+            }
+
+            if (component is RuneStone runeStone)
+            {
+                if (!TryGetRegularRunestoneDetection(runeStone, out _) && !TryGetMuralDetection(component, out _))
+                {
+                    return;
+                }
+            }
+            else if (!TryGetMuralDetection(component, out _))
+            {
+                return;
+            }
+
+            EnsureDiscoveryRpcProxy(zNetView);
         }
 
         private static void RegisterFallbackTranslations()
@@ -288,7 +396,7 @@ namespace IceCaveSkills
             }
 
             _lastHoveredDiscoveryKey = discoveryKey;
-            TryDiscoverMural(component, player, discoveryKey);
+            IceCaveSkillsPlugin.TryDiscoverMural(component, player);
         }
 
         private static Skills? GetPlayerSkills(Player player)
@@ -296,7 +404,7 @@ namespace IceCaveSkills
             return player.GetSkills();
         }
 
-        private static bool TryApplySkillReward(Skills skills, Skills.SkillType rewardedSkill, out float previousLevel, out float newLevel)
+        private static bool TryApplySkillReward(Skills skills, RewardSource rewardSource, Skills.SkillType rewardedSkill, out float previousLevel, out float newLevel)
         {
             Skills.Skill? skill = skills.GetSkill(rewardedSkill);
             if (skill == null)
@@ -307,7 +415,7 @@ namespace IceCaveSkills
             }
 
             previousLevel = skill.m_level;
-            float rewardAmount = GetRewardAmount(previousLevel);
+            float rewardAmount = GetRewardAmount(rewardSource, previousLevel);
             if (rewardAmount <= 0f)
             {
                 newLevel = previousLevel;
@@ -319,15 +427,16 @@ namespace IceCaveSkills
             return newLevel > previousLevel;
         }
 
-        private static float GetRewardAmount(float currentLevel)
+        private static float GetRewardAmount(RewardSource rewardSource, float currentLevel)
         {
-            float configuredAmount = Mathf.Max(0f, _rewardAmount.Value);
+            float configuredAmount = Mathf.Max(0f, rewardSource == RewardSource.Runestone ? _runestoneRewardAmount.Value : _cavePaintingRewardAmount.Value);
             if (configuredAmount <= 0f || currentLevel >= MaxSkillLevel)
             {
                 return 0f;
             }
 
-            float rewardAmount = _rewardAmountMode.Value == RewardAmountMode.PercentageOfMax
+            RewardAmountMode rewardMode = rewardSource == RewardSource.Runestone ? _runestoneRewardAmountMode.Value : _cavePaintingRewardAmountMode.Value;
+            float rewardAmount = rewardMode == RewardAmountMode.PercentageOfMax
                 ? MaxSkillLevel * (configuredAmount / 100f)
                 : configuredAmount;
             return Mathf.Clamp(rewardAmount, 0f, MaxSkillLevel - currentLevel);
@@ -350,6 +459,28 @@ namespace IceCaveSkills
             return hoverObject.GetComponentInParent<Vegvisir>();
         }
 
+        private static Component? GetMuralComponentFromRoot(GameObject rootObject)
+        {
+            Component? component = rootObject.GetComponentInChildren<HoverText>(true);
+            if (component != null)
+            {
+                return component;
+            }
+
+            component = rootObject.GetComponentInChildren<RuneStone>(true);
+            if (component != null)
+            {
+                return component;
+            }
+
+            return rootObject.GetComponentInChildren<Vegvisir>(true);
+        }
+
+        private static MuralDiscoveryRpcProxy EnsureDiscoveryRpcProxy(ZNetView zNetView)
+        {
+            return zNetView.GetComponent<MuralDiscoveryRpcProxy>() ?? zNetView.gameObject.AddComponent<MuralDiscoveryRpcProxy>();
+        }
+
         private static bool TryGetMuralDetection(Component component, out string discoveryKey)
         {
             int instanceId = component.GetInstanceID();
@@ -363,6 +494,18 @@ namespace IceCaveSkills
             discoveryKey = isEligible ? BuildDiscoveryKey(component) : string.Empty;
             MuralDetectionCacheByComponent[instanceId] = new MuralDetectionCache(isEligible, discoveryKey);
             return isEligible;
+        }
+
+        private static bool TryGetRegularRunestoneDetection(RuneStone runeStone, out string discoveryKey)
+        {
+            if (!IsRegularRunestone(runeStone))
+            {
+                discoveryKey = string.Empty;
+                return false;
+            }
+
+            discoveryKey = BuildDiscoveryKey(runeStone);
+            return true;
         }
 
         private static bool IsFrostCaveMural(Component component)
@@ -397,6 +540,30 @@ namespace IceCaveSkills
             }
 
             return false;
+        }
+
+        private static bool IsRegularRunestone(RuneStone runeStone)
+        {
+            if (_enableRunestoneRewards.Value == Toggle.Off)
+            {
+                return false;
+            }
+
+            if (IsFrostCaveMural(runeStone))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(runeStone.m_locationName)
+                || runeStone.m_pinType == Minimap.PinType.Boss
+                || ContainsAny(runeStone.m_name, BossRuneStoneTerms)
+                || ContainsAny(runeStone.m_topic, BossRuneStoneTerms)
+                || ContainsAny(runeStone.m_pinName, BossRuneStoneTerms))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static bool UpdateMuralMarkers(string? value, ref bool hasCaveMarker, ref bool hasMuralMarker)
@@ -445,12 +612,34 @@ namespace IceCaveSkills
             return sanitized.ToString();
         }
 
+        private static ZNetView? GetDiscoveryZNetView(Component component)
+        {
+            return component.GetComponentInParent<ZNetView>();
+        }
+
+        private static int GetDiscoveryZdoKey(string discoveryKey)
+        {
+            return (DiscoveryZdoKeyPrefix + discoveryKey).GetStableHashCode();
+        }
+
         private static void ShowRewardMessage(Player player, Skills.SkillType rewardedSkill, float grantedLevels, float newLevel)
         {
             string skillName = GetSkillDisplayName(rewardedSkill);
             string format = Localization.instance.Localize("$icecaveskills_reward_message");
             string message = string.Format(format, skillName, grantedLevels.ToString("0.#"), newLevel.ToString("0.#"));
             player.Message(MessageHud.MessageType.Center, message, 0, null);
+        }
+
+        private static void PlayRewardEffect(Vector3 position)
+        {
+            GameObject? rewardEffectPrefab = ZNetScene.instance?.GetPrefab(RewardSfxPrefabName);
+            if (rewardEffectPrefab == null)
+            {
+                PieceManagerModTemplateLogger.LogWarning($"Failed to find reward effect prefab '{RewardSfxPrefabName}'.");
+                return;
+            }
+
+            UnityEngine.Object.Instantiate(rewardEffectPrefab, position, Quaternion.identity);
         }
 
         private static void ShowClaimedMessage(Player player)
@@ -508,7 +697,10 @@ namespace IceCaveSkills
         {
             if (!hold)
             {
-                IceCaveSkillsPlugin.TryDiscoverMural(__instance, character);
+                if (!IceCaveSkillsPlugin.TryDiscoverRunestone(__instance, character))
+                {
+                    IceCaveSkillsPlugin.TryDiscoverMural(__instance, character);
+                }
             }
         }
     }
@@ -519,10 +711,10 @@ namespace IceCaveSkills
         [UsedImplicitly]
         private static void Postfix(Vegvisir __instance, Humanoid character, bool hold, bool __result)
         {
-            if (!hold && __result)
-            {
-                IceCaveSkillsPlugin.TryDiscoverMural(__instance, character);
-            }
+            _ = __instance;
+            _ = character;
+            _ = hold;
+            _ = __result;
         }
     }
 
@@ -538,6 +730,52 @@ namespace IceCaveSkills
             }
 
             IceCaveSkillsPlugin.TryDiscoverHoveredMural(__instance.GetHoverObject(), __instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(ZNetView), nameof(ZNetView.Awake))]
+    public static class ZNetViewAwakePatch
+    {
+        [UsedImplicitly]
+        private static void Postfix(ZNetView __instance)
+        {
+            IceCaveSkillsPlugin.EnsureDiscoveryRpcProxyIfEligible(__instance);
+        }
+    }
+
+    public class MuralDiscoveryRpcProxy : MonoBehaviour
+    {
+        private const string RpcName = "IceCaveSkills_ClaimMural";
+        private ZNetView _zNetView = null!;
+
+        private void Awake()
+        {
+            _zNetView = GetComponent<ZNetView>();
+            _zNetView.Register<long, string>(RpcName, RPC_ClaimMural);
+        }
+
+        public bool TryClaimMural(long playerId, string discoveryKey)
+        {
+            if (!_zNetView.IsValid())
+            {
+                return false;
+            }
+
+            if (_zNetView.IsOwner())
+            {
+                return IceCaveSkillsPlugin.TryProcessMuralClaim(_zNetView, playerId, discoveryKey);
+            }
+
+            _zNetView.InvokeRPC(RpcName, playerId, discoveryKey);
+            return true;
+        }
+
+        private void RPC_ClaimMural(long sender, long playerId, string discoveryKey)
+        {
+            if (_zNetView.IsOwner())
+            {
+                IceCaveSkillsPlugin.TryProcessMuralClaim(_zNetView, playerId, discoveryKey);
+            }
         }
     }
 
