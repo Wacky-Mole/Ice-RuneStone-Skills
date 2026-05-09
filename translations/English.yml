@@ -1,2 +1,5 @@
-$icecaveskills_reward_message: "Ancient mural discovered: {0} increased by {1}. New level: {2}."
-$icecaveskills_claimed_message: "This Frost Cave mural has already granted its blessing."
+icecaveskills_reward_message: "Ancient mural discovered: {0} increased by {1}. New level: {2}."
+icecaveskills_claimed_message: "This Frost Cave mural has already granted its blessing."
+icecaveskills_runestone_reward_message: "Ancient runestone studied: {0} increased by {1}. New level: {2}."
+icecaveskills_runestone_claimed_message: "This runestone has already shared its wisdom."
+icecaveskills_rare_find_message: "{0} discovered a rare {1} blessing: {2} increased by {3}. New level: {4}."

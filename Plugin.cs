@@ -20,7 +20,7 @@ namespace IceCaveSkills
     {
         internal const string ModName = "IceAndRuneStoneSkills";
         internal const string DisplayName = "Ice&RuneStone Skills";
-        internal const string ModVersion = "1.0.0";
+        internal const string ModVersion = "1.0.1";
         internal const string Author = "WackyMole";
         private const string ModGUID = Author + "." + ModName;
         private const string DiscoveryKeyPrefix = "IceCaveSkills_Mural_";
@@ -88,7 +88,6 @@ namespace IceCaveSkills
         public void Awake()
         {
             Localizer.Load();
-            RegisterFallbackTranslations();
 
             _serverConfigLocked = config("1 - General", "Lock Configuration", Toggle.On,
                 "If on, the configuration is locked and can be changed by server admins only.");
@@ -359,19 +358,7 @@ namespace IceCaveSkills
             EnsureDiscoveryRpcProxy(zNetView);
         }
 
-        private static void RegisterFallbackTranslations()
-        {
-            const string rewardMessageKey = "icecaveskills_reward_message";
-            const string claimedMessageKey = "icecaveskills_claimed_message";
-            const string rewardMessageText = "Ancient mural discovered: {0} increased by {1}. New level: {2}.";
-            const string claimedMessageText = "This Frost Cave mural has already granted its blessing.";
 
-            Localizer.AddText(rewardMessageKey, rewardMessageText);
-            Localizer.AddText(claimedMessageKey, claimedMessageText);
-
-            Localization.instance.AddWord(rewardMessageKey, rewardMessageText);
-            Localization.instance.AddWord(claimedMessageKey, claimedMessageText);
-        }
 
         internal static void TryDiscoverHoveredMural(GameObject? hoverObject, Player player)
         {
