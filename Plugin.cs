@@ -300,7 +300,7 @@ namespace IceCaveSkills
             long currentResetVersion = GetDiscoveryResetVersion();
             if (discoveryZdo.GetLong(discoveryZdoKey, -1L) == currentResetVersion)
             {
-                ShowClaimedMessage(player);
+                ShowClaimedMessage(player, rewardSource);
                 return false;
             }
 
@@ -325,7 +325,7 @@ namespace IceCaveSkills
             }
 
             discoveryZdo.Set(discoveryZdoKey, currentResetVersion);
-            ShowRewardMessage(player, rewardedSkill, newLevel - previousLevel, newLevel);
+            ShowRewardMessage(player, rewardSource, rewardedSkill, newLevel - previousLevel, newLevel);
             PlayRewardEffect(player.transform.position);
             PieceManagerModTemplateLogger.LogInfo($"Awarded {rewardSource} reward {rewardedSkill} (+{newLevel - previousLevel:0.#}) for {discoveryKey}.");
             return true;
@@ -561,7 +561,7 @@ namespace IceCaveSkills
             }
 
             if (!string.IsNullOrWhiteSpace(runeStone.m_locationName)
-                || runeStone.m_pinType == Minimap.PinType.Boss
+                || runeStone.m_showMap
                 || ContainsAny(runeStone.m_name, BossRuneStoneTerms)
                 || ContainsAny(runeStone.m_topic, BossRuneStoneTerms)
                 || ContainsAny(runeStone.m_pinName, BossRuneStoneTerms))
@@ -705,10 +705,12 @@ namespace IceCaveSkills
                 allowInDevBuild: true);
         }
 
-        private static void ShowRewardMessage(Player player, Skills.SkillType rewardedSkill, float grantedLevels, float newLevel)
+        private static void ShowRewardMessage(Player player, RewardSource rewardSource, Skills.SkillType rewardedSkill, float grantedLevels, float newLevel)
         {
             string skillName = GetSkillDisplayName(rewardedSkill);
-            string format = Localization.instance.Localize("$icecaveskills_reward_message");
+            string format = Localization.instance.Localize(rewardSource == RewardSource.Runestone
+                ? "$icecaveskills_runestone_reward_message"
+                : "$icecaveskills_reward_message");
             string message = string.Format(format, skillName, grantedLevels.ToString("0.#"), newLevel.ToString("0.#"));
             player.Message(MessageHud.MessageType.Center, message, 0, null);
         }
@@ -725,7 +727,7 @@ namespace IceCaveSkills
             UnityEngine.Object.Instantiate(rewardEffectPrefab, position, Quaternion.identity);
         }
 
-        private static void ShowClaimedMessage(Player player)
+        private static void ShowClaimedMessage(Player player, RewardSource rewardSource)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long lastShown = player.m_nview?.GetZDO()?.GetLong(ClaimedMessageCooldownHash, 0L) ?? 0L;
@@ -735,7 +737,12 @@ namespace IceCaveSkills
             }
 
             player.m_nview?.GetZDO()?.Set(ClaimedMessageCooldownHash, now);
-            player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$icecaveskills_claimed_message"), 0, null);
+            player.Message(MessageHud.MessageType.Center,
+                Localization.instance.Localize(rewardSource == RewardSource.Runestone
+                    ? "$icecaveskills_runestone_claimed_message"
+                    : "$icecaveskills_claimed_message"),
+                0,
+                null);
         }
 
         private static void ResetHoveredMuralTracking()
