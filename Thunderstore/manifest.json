@@ -1,6 +1,6 @@
 {
   "name": "IceAndRuneStoneSkills",
-  "version_number": "1.0.1",
+  "version_number": "1.0.2",
   "website_url": "https://github.com/Wacky-Mole/Ice-RuneStone-Skills",
   "description": "Frost Cave cave paintings and regular runestones can each grant configurable one-time skill rewards, with boss runestones and Vegvisirs excluded.",
   "dependencies": [

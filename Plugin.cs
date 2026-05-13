@@ -20,7 +20,7 @@ namespace IceCaveSkills
     {
         internal const string ModName = "IceAndRuneStoneSkills";
         internal const string DisplayName = "Ice&RuneStone Skills";
-        internal const string ModVersion = "1.0.1";
+        internal const string ModVersion = "1.0.2";
         internal const string Author = "WackyMole";
         private const string ModGUID = Author + "." + ModName;
         private const string DiscoveryKeyPrefix = "IceCaveSkills_Mural_";
@@ -30,11 +30,13 @@ namespace IceCaveSkills
         private const string DiscoveryResetVersionGlobalKeyPrefix = "icecaveskills_reset_version_";
         private const string RewardSfxPrefabName = "sfx_Potion_health_medium";
         private const float MaxSkillLevel = 100f;
+        private const long RewardScanCooldownSeconds = 10L;
         private static string ConfigFileName = ModGUID + ".cfg";
         private static string ConfigFileFullPath = Paths.ConfigPath + Path.DirectorySeparatorChar + ConfigFileName;
         internal static string ConnectionError = "";
         private readonly Harmony _harmony = new(ModGUID);
         private static readonly int ClaimedMessageCooldownHash = "IceCaveSkillsLastClaimedMessage".GetStableHashCode();
+        private static readonly int RewardScanCooldownHash = "IceCaveSkillsRewardScanCooldownUntil".GetStableHashCode();
         private static int _lastHoverObjectInstanceId;
         private static string? _lastHoveredDiscoveryKey;
         private static readonly string[] SearchableFieldNames = { "m_name", "m_locationName", "m_topic", "m_hoverName", "m_pinName", "m_text" };
@@ -47,7 +49,7 @@ namespace IceCaveSkills
 
         private static readonly string[] MuralTerms =
         {
-            "mural", "vegvisir", "rune", "runestone", "cavepainting", "cave_painting"
+            "mural",  "rune", "runestone", "cavepainting", "cave_painting"
         };
 
         private static readonly string[] BossRuneStoneTerms =
@@ -105,7 +107,7 @@ namespace IceCaveSkills
                 "If on, regular runestones can award skills. Boss runestones and Vegvisirs are excluded.");
             _runestoneRewardAmountMode = config("3 - Runestone Rewards", "Skill Reward Mode", RewardAmountMode.Flat,
                 "Choose whether regular runestone rewards are granted as flat skill levels or as a percentage of the max skill level.");
-            _runestoneRewardAmount = config("3 - Runestone Rewards", "Skill Reward Amount", 3f,
+            _runestoneRewardAmount = config("3 - Runestone Rewards", "Skill Reward Amount", 4f,
                 new ConfigDescription(
                     "Amount awarded by each eligible regular runestone. In PercentageOfMax mode, this is treated as a percent of the max skill level.",
                     new AcceptableValueRange<float>(0f, MaxSkillLevel)));
@@ -324,6 +326,7 @@ namespace IceCaveSkills
             }
 
             discoveryZdo.Set(discoveryZdoKey, currentResetVersion);
+            player.m_nview?.GetZDO()?.Set(RewardScanCooldownHash, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + RewardScanCooldownSeconds);
             ShowRewardMessage(player, rewardSource, rewardedSkill, newLevel - previousLevel, newLevel);
             PlayRewardEffect(player.transform.position);
             PieceManagerModTemplateLogger.LogInfo($"Awarded {rewardSource} reward {rewardedSkill} (+{newLevel - previousLevel:0.#}) for {discoveryKey}.");
@@ -363,6 +366,14 @@ namespace IceCaveSkills
         internal static void TryDiscoverHoveredMural(GameObject? hoverObject, Player player)
         {
             if (_enableCavePaintingRewards.Value == Toggle.Off || hoverObject == null)
+            {
+                ResetHoveredMuralTracking();
+                return;
+            }
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long cooldownUntil = player.m_nview?.GetZDO()?.GetLong(RewardScanCooldownHash, 0L) ?? 0L;
+            if (cooldownUntil > now)
             {
                 ResetHoveredMuralTracking();
                 return;

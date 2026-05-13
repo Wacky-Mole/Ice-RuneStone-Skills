@@ -1,64 +1,53 @@
 # Ice&RuneStone Skills
 
-Ice&RuneStone Skills is a Valheim BepInEx mod that turns Frost Cave murals, cave paintings, and regular runestones into one-time discovery rewards.
+Ice&RuneStone Skills rewards exploration.
 
-When a player is the first person in that world to discover an eligible Frost Cave mural or regular runestone, it grants a configurable reward to a random skill. After that, the same object will not reward anyone else again.
+Find Frost Cave cave paintings and regular runestones across the world to earn one-time skill boosts for the server.
 
+![IceLevelUP](https://wackymole.com/hosts/IceMural_levelup.png)
 ## Features
 
-- Grants configurable random skill rewards from Frost Cave cave paintings and regular runestones
-- Uses separate configuration for Frost Cave cave paintings and regular runestones
-- Rewards only the first player to discover each eligible object
-- Prevents duplicate rewards from the same mural or runestone in the same world
-- Shows an in-game message for both successful rewards and already-claimed murals
-- Supports Frost Cave cave painting prefabs that use hover text instead of interact behavior
-- Supports flat or percentage-based skill rewards for each reward source
-- Can disable cave painting rewards or regular runestone rewards through config
-- Excludes Vegvisirs and boss runestones from rewards
-- Supports multiplayer version checks through the existing handshake logic
+- Rewards exploring Frost Caves and the wider world
+- One-time skill boosts from eligible cave paintings and regular runestones
+- Separate settings for cave paintings and runestones
+- Flat or percentage-based rewards
+- Vegvisirs and boss runestones are excluded
+- Multiplayer-safe discovery tracking
 
 ## How it works
 
-The mod monitors eligible Frost Cave mural and cave painting hover/interact targets, plus regular RuneStone interactions, and checks whether the object matches the appropriate reward rules.
+- Explore and discover eligible cave paintings or runestones.
+- The first discovery in that world grants a random skill boost.
+- After that, the same object is marked as claimed.
 
-If the mural or runestone has not been claimed before:
-
-1. A random valid skill is selected.
-2. The player receives the configured reward in that skill.
-3. The object is marked as claimed on its ZDO for the current world.
-
-If the object was already claimed, the player gets a short notification instead.
+![RuneUP](https://wackymole.com/hosts/runestone_levelup.png)
 
 ## Notes
 
-- Skill rewards are currently chosen from Valheim's normal skill list, excluding `None` and `All`.
-- The reward is capped by the game's normal `100` skill level limit.
-- Discovery tracking is stored as world state, so it persists across sessions.
-- Frost Cave cave paintings and regular runestones use separate detection and reward settings.
-- Boss runestones are excluded using runestone metadata and boss-related naming checks.
-- Hover-based cave painting detection is cached to reduce repeated per-frame work.
+- Rewards use Valheim's normal skill list, excluding `None` and `All`.
+- Skill gains are capped at `100`.
+- Discoveries persist with the world.
 
-
+![AlreadyTaken](https://wackymole.com/hosts/IceMural_alreadygiven.png)
 ## Configuration
-
-The mod includes server-synced configuration locking through BepInEx/ServerSync.
 
 - `Lock Configuration`: when enabled, configuration changes are restricted to server admins.
 - `Enable Cave Painting Rewards`: enables or disables Frost Cave cave painting rewards.
-- `Skill Reward Mode` under `2 - Cave Painting Rewards`: choose `Flat` or `PercentageOfMax` for Frost Cave cave paintings.
-- `Skill Reward Amount` under `2 - Cave Painting Rewards`: the reward value applied to Frost Cave cave paintings.
+- `2 - Cave Painting Rewards`: configure cave painting reward mode and amount.
 - `Enable Runestone Rewards`: enables or disables regular runestone rewards.
-- `Skill Reward Mode` under `3 - Runestone Rewards`: choose `Flat` or `PercentageOfMax` for regular runestones.
-- `Skill Reward Amount` under `3 - Runestone Rewards`: the reward value applied to regular runestones.
+- `3 - Runestone Rewards`: configure runestone reward mode and amount.
+
 ## Admin Command
 
 - `irs_resetdiscoveries`: resets all mural and runestone discoveries so players can rediscover them again.
-- This command is restricted to server admins through ServerSync's admin handling.
+- Server admin only.
 
 
 ### Mostly AI Generated
 I thought I would test how well AI can write a mod.  I used Azumatt Template and GPT 5.4 (Med). It's a bit iffy, but if you burn enough tokens you can get something that works okay. I optimized it and profiled it. 
-If I wrote this mod without AI, it might be better at the performance on the patches. Right now, it's just okay. The AI did have a bit of problem with ServerSync and LocalizationManager which I fixed.
+If I wrote this mod without AI, it might be better at the performance on the patches. Right now, it's just okay. This is not a hard mod to make, however the ice cave murals are challenging to target unlike RuneStones.
+
+The AI did have a bit of problem with ServerSync and LocalizationManager which I fixed.
 I am not going to start writing a lot of AI mods, but this was a fun experiment to see how well it can do and it took at lot less time.  
 
 
