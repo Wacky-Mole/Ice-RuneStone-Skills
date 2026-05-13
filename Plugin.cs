@@ -40,6 +40,7 @@ namespace IceCaveSkills
         private static int _lastHoverObjectInstanceId;
         private static string? _lastHoveredDiscoveryKey;
         private static readonly string[] SearchableFieldNames = { "m_name", "m_locationName", "m_topic", "m_hoverName", "m_pinName", "m_text" };
+        private static readonly Dictionary<Type, FieldInfo[]> SearchableFieldsByType = new();
         private static readonly Dictionary<int, MuralDetectionCache> MuralDetectionCacheByComponent = new();
         private static readonly string[] FrostCaveTerms =
         {
@@ -312,14 +313,13 @@ namespace IceCaveSkills
                 return false;
             }
 
-            Skills.SkillType[] availableSkills = RewardableSkillTypes.Where(skillType => Skills.IsSkillValid(skillType)).ToArray();
-            if (availableSkills.Length == 0)
+            if (RewardableSkillTypes.Length == 0)
             {
                 PieceManagerModTemplateLogger.LogWarning($"No valid skills were available for a {rewardSource} reward.");
                 return false;
             }
 
-            Skills.SkillType rewardedSkill = availableSkills[UnityEngine.Random.Range(0, availableSkills.Length)];
+            Skills.SkillType rewardedSkill = RewardableSkillTypes[UnityEngine.Random.Range(0, RewardableSkillTypes.Length)];
             if (!TryApplySkillReward(skills, rewardSource, rewardedSkill, out float previousLevel, out float newLevel))
             {
                 return false;
@@ -533,17 +533,37 @@ namespace IceCaveSkills
                 }
             }
 
-            Type componentType = component.GetType();
-            foreach (string fieldName in SearchableFieldNames)
+            foreach (FieldInfo field in GetSearchableFields(component.GetType()))
             {
-                FieldInfo? field = componentType.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (field?.GetValue(component) is string fieldValue && UpdateMuralMarkers(fieldValue, ref hasCaveMarker, ref hasMuralMarker))
+                if (field.GetValue(component) is string fieldValue && UpdateMuralMarkers(fieldValue, ref hasCaveMarker, ref hasMuralMarker))
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static FieldInfo[] GetSearchableFields(Type componentType)
+        {
+            if (SearchableFieldsByType.TryGetValue(componentType, out FieldInfo[] fields))
+            {
+                return fields;
+            }
+
+            List<FieldInfo> resolvedFields = new();
+            foreach (string fieldName in SearchableFieldNames)
+            {
+                FieldInfo? field = componentType.GetField(fieldName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (field != null)
+                {
+                    resolvedFields.Add(field);
+                }
+            }
+
+            fields = resolvedFields.ToArray();
+            SearchableFieldsByType[componentType] = fields;
+            return fields;
         }
 
         private static bool IsRegularRunestone(RuneStone runeStone)
