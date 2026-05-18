@@ -20,7 +20,7 @@ namespace IceCaveSkills
     {
         internal const string ModName = "IceAndRuneStoneSkills";
         internal const string DisplayName = "Ice&RuneStone Skills";
-        internal const string ModVersion = "1.0.2";
+        internal const string ModVersion = "1.0.3";
         internal const string Author = "WackyMole";
         private const string ModGUID = Author + "." + ModName;
         private const string DiscoveryKeyPrefix = "IceCaveSkills_Mural_";
@@ -82,6 +82,12 @@ namespace IceCaveSkills
             PercentageOfMax = 1
         }
 
+        public enum DiscoveryScope
+        {
+            World = 0,
+            PerPlayer = 1
+        }
+
         private enum RewardSource
         {
             CavePainting,
@@ -95,6 +101,8 @@ namespace IceCaveSkills
             _serverConfigLocked = config("1 - General", "Lock Configuration", Toggle.On,
                 "If on, the configuration is locked and can be changed by server admins only.");
             _ = ConfigSync.AddLockingConfigEntry(_serverConfigLocked);
+            _discoveryScope = config("1 - General", "Discovery Scope", DiscoveryScope.World,
+                "Choose whether discoveries are shared for the whole world or can be earned once per player.");
 
             _enableCavePaintingRewards = config("2 - Rewards", "Enable Cave Painting Rewards", Toggle.On,
                 "If on, Frost Cave cave paintings can award skills.");
@@ -156,6 +164,7 @@ namespace IceCaveSkills
         #region ConfigOptions
 
         private static ConfigEntry<Toggle> _serverConfigLocked = null!;
+        private static ConfigEntry<DiscoveryScope> _discoveryScope = null!;
         private static ConfigEntry<Toggle> _enableCavePaintingRewards = null!;
         private static ConfigEntry<RewardAmountMode> _cavePaintingRewardAmountMode = null!;
         private static ConfigEntry<float> _cavePaintingRewardAmount = null!;
@@ -298,7 +307,7 @@ namespace IceCaveSkills
                 return false;
             }
 
-            int discoveryZdoKey = GetDiscoveryZdoKey(discoveryKey);
+            int discoveryZdoKey = GetDiscoveryZdoKey(discoveryKey, playerId);
             long currentResetVersion = GetDiscoveryResetVersion();
             if (discoveryZdo.GetLong(discoveryZdoKey, -1L) == currentResetVersion)
             {
@@ -641,9 +650,16 @@ namespace IceCaveSkills
             return component.GetComponentInParent<ZNetView>();
         }
 
-        private static int GetDiscoveryZdoKey(string discoveryKey)
+        private static int GetDiscoveryZdoKey(string discoveryKey, long playerId)
         {
-            return (DiscoveryZdoKeyPrefix + discoveryKey).GetStableHashCode();
+            return (DiscoveryZdoKeyPrefix + GetScopedDiscoveryKey(discoveryKey, playerId)).GetStableHashCode();
+        }
+
+        private static string GetScopedDiscoveryKey(string discoveryKey, long playerId)
+        {
+            return _discoveryScope.Value == DiscoveryScope.PerPlayer
+                ? discoveryKey + "_" + playerId
+                : discoveryKey;
         }
 
         private static long GetDiscoveryResetVersion()

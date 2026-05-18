@@ -13,12 +13,13 @@ Find Frost Cave cave paintings and regular runestones across the world to earn o
 - Flat or percentage-based rewards
 - Vegvisirs and boss runestones are excluded
 - Multiplayer-safe discovery tracking
+- Discoveries can be shared per world or earned once per player
 
 ## How it works
 
 - Explore and discover eligible cave paintings or runestones.
-- The first discovery in that world grants a random skill boost.
-- After that, the same object is marked as claimed.
+- Depending on config, the first discovery in that world or for that player grants a random skill boost.
+- After that, the same object is marked as claimed for the world or player.
 
 ![RuneUP](https://wackymole.com/hosts/runestone_levelup.png)
 
@@ -32,6 +33,7 @@ Find Frost Cave cave paintings and regular runestones across the world to earn o
 ## Configuration
 
 - `Lock Configuration`: when enabled, configuration changes are restricted to server admins.
+- `Discovery Scope`: choose whether discoveries are shared for the world or tracked once per player.
 - `Enable Cave Painting Rewards`: enables or disables Frost Cave cave painting rewards.
 - `2 - Cave Painting Rewards`: configure cave painting reward mode and amount.
 - `Enable Runestone Rewards`: enables or disables regular runestone rewards.
